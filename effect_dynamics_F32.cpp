@@ -1,7 +1,5 @@
-/* Audio Library for Teensy 3.X
- * Dynamics Processor (Gate, Compressor & Limiter)
- * Copyright (c) 2017, Marc Paquette (marc@dacsystemes.com)
- * Based on analyse_rms & mixer objects by Paul Stoffregen
+/* Dynamics Processor (Gate, Compressor & Limiter)
+ * Copyright (c) 2022, Marc Paquette
  *
  * Development of this audio library was funded by PJRC.COM, LLC by sales of
  * Teensy and Audio Adaptor boards.  Please support PJRC's efforts to develop
@@ -30,11 +28,12 @@
 #include "effect_dynamics_F32.h"
 #include <Arduino.h>
 
-AudioEffectDynamics_F32::AudioEffectDynamics_F32(void)
+AudioEffectDynamics_F32::AudioEffectDynamics_F32(DetectorTypes detector)
 	: AudioStream_F32(2, inputQueueArray)
 {
     sample_rate_Hz = AUDIO_SAMPLE_RATE_EXACT;
-
+	detectorType = detector;
+	
     gate();
     compression();
     limit();
@@ -42,10 +41,11 @@ AudioEffectDynamics_F32::AudioEffectDynamics_F32(void)
 }
 
 
-AudioEffectDynamics_F32::AudioEffectDynamics_F32(const AudioSettings_F32 &settings)
+AudioEffectDynamics_F32::AudioEffectDynamics_F32(const AudioSettings_F32 &settings, DetectorTypes detector)
 	: AudioStream_F32(2, inputQueueArray)
 {
     sample_rate_Hz = settings.sample_rate_Hz;
+	detectorType = detector;
 
     gate();
     compression();
@@ -158,7 +158,8 @@ void AudioEffectDynamics_F32::makeupGain(float gain)
     aMakeupdb = constrain(gain, -24.0f, 24.0f);
 }
 
-
+// ***********************************************************************************************/
+// from https://github.com/romeric/fastapprox
 inline float fasterlog2(float x)
 {
     union { float f; uint32_t i; } vx = { x };
@@ -174,6 +175,7 @@ inline float fasterexp2f (float p)
     union { uint32_t i; float f; } v = { uint32_t( (1 << 23) * (clipp + 126.94269504f) ) };
     return v.f;
 }
+// ***********************************************************************************************/
 
 
 inline float AudioEffectDynamics_F32::unit2db(float u)
@@ -216,35 +218,33 @@ void AudioEffectDynamics_F32::update(void)
 
     if (!block) return;
 
-    if (!aGateEnabled && !aCompEnabled && !aLimitEnabled)
-    {
-        if (aMakeupdb != 0.0f)
-        {
-            arm_scale_f32(block->data, db2unit(aMakeupdb), block->data, block->length);
-        }
-
-        aCurrentGainDb = aMakeupdb;
-
-        //Transmit & release
-        AudioStream_F32::transmit(block);
-        AudioStream_F32::release(block);
-        return;
-    }
-	
     sidechain = AudioStream_F32::receiveReadOnly_f32(1);
     if (!sidechain) sidechain = block;
 
     for (int i = 0; i < block->length; i++)
     {
+		float inputdb = 0.0f;
 		float samp = sidechain->data[i];
-		if (samp < 0.0f) samp = -samp;
-		samp *= 0.707f;
 		
+		if (detectorType == DetectorType_RMS)
+		{
+			//RMS
+			rmsSquaresSum -= rmsSamplesSquared[squareIndex];
+			rmsSquaresSum += (rmsSamplesSquared[squareIndex] = (samp * samp));
+			
+			if (++squareIndex >= rmsSampleSize) squareIndex = 0;
+			
+			float rms = sqrtf(rmsSquaresSum / (float)rmsSampleSize);
+			
+			inputdb = unit2db(rms);
+		}		
+		else
+		{
+			//Peak
+			if (samp < 0.0f) samp = -samp;
+			inputdb = unit2db(samp * 0.707f);
+		}
 		
-        float inputdb = unit2db(samp);
-		
-		aCurrentInputDb = inputdb;
-
         float finaldb = aMakeupdb;
 
         //Gate
@@ -293,8 +293,6 @@ void AudioEffectDynamics_F32::update(void)
 
             finaldb += aLimitdb;
         }
-		
-		aCurrentGainDb = finaldb;
 
         //Compute linear gain
         block->data[i] *= db2unit(finaldb);

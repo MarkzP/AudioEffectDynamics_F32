@@ -1,7 +1,5 @@
-/* Audio Library for Teensy 3.X
- * Dynamics Processor (Gate, Compressor & Limiter)
- * Copyright (c) 2018, Marc Paquette (marc@dacsystemes.com)
- * Based on analyse_rms, effect_envelope & mixer objects by Paul Stoffregen
+/* Dynamics Processor (Gate, Compressor & Limiter)
+ * Copyright (c) 2022, Marc Paquette
  *
  * Development of this audio library was funded by PJRC.COM, LLC by sales of
  * Teensy and Audio Adaptor boards.  Please support PJRC's efforts to develop
@@ -41,8 +39,14 @@
 class AudioEffectDynamics_F32 : public AudioStream_F32
 {
 public:
-    AudioEffectDynamics_F32(void);
-    AudioEffectDynamics_F32(const AudioSettings_F32 &settings);
+	typedef enum
+	{
+		DetectorType_Peak,
+		DetectorType_RMS,
+	} DetectorTypes;
+
+    AudioEffectDynamics_F32(DetectorTypes detector = DetectorType_Peak);
+    AudioEffectDynamics_F32(const AudioSettings_F32 &settings, DetectorTypes detector = DetectorType_Peak);
 
     //Sets the gate parameters.
     //threshold is in dbFS
@@ -69,8 +73,7 @@ public:
     //gain is in dbFS
     void makeupGain(float gain = 0.0f);
 
-    float readCurrentGain() { return aCurrentGainDb - aMakeupdb; }
-	float readCurrentInput() { return aCurrentInputDb; }
+    float readCurrentGain() { return aCompdb; }
 
 protected:
     float unit2db(float u);
@@ -80,8 +83,14 @@ protected:
 
 private:
     audio_block_f32_t *inputQueueArray[2];
-
+	
     float sample_rate_Hz;
+	DetectorTypes detectorType;
+	static const int rmsWindowTimeMsec = 2;  // similar to dBX compressors using uPC1253
+	static const int rmsSampleSize = (AUDIO_SAMPLE_RATE * rmsWindowTimeMsec) / 1000;
+	float rmsSamplesSquared[rmsSampleSize];
+	float rmsSquaresSum;
+	int squareIndex;
 
     bool aGateEnabled = false;
     float aGateThresholdOpen;
@@ -112,9 +121,6 @@ private:
     bool mgAutoEnabled = false;
     float mgHeadroom;
     float aMakeupdb;
-
-    float aCurrentGainDb;
-	float aCurrentInputDb;
 
     virtual void update(void);
 };
