@@ -82,7 +82,7 @@ public:
 
 	float readDetector();
 
-	float readCurrentGain() { return aCompdb; }
+	float readCurrentGain() { return aMakeupdb + aGatedb + aCompdb + aLimitdb; }
 
 protected:
 	void init();

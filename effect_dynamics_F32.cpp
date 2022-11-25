@@ -48,27 +48,29 @@ AudioEffectDynamics_F32::AudioEffectDynamics_F32(const AudioSettings_F32 &settin
 
 void AudioEffectDynamics_F32::detector(DetectorTypes detectorType, float time, float voltageDrop)
 {
-	unsigned rmsSampleSize = (unsigned int)(sample_rate_Hz * fabsf(time));
-
-	if (detectorType == aDetector && rmsSampleSize == aRmsSampleSize) return;
-
-	aDetector = DetectorType_DiodeBridge;
-	aDetectorLevel = 0.0f;
-	aDetectorDecay = timeToAlpha(time);
-	aVoltageDrop = fabsf(voltageDrop);
-	
-	free(apRmsSamplesSquared);
-	
 	if (detectorType == DetectorType_RMS)
 	{
-		apRmsSamplesSquared = (double*)malloc(rmsSampleSize * sizeof(double));
-		if (apRmsSamplesSquared == nullptr) return;
+		unsigned rmsSampleSize = (unsigned int)(sample_rate_Hz * fabsf(time)) + 1;
+		if (rmsSampleSize > aRmsSampleSize) {
+			free(apRmsSamplesSquared);
+			apRmsSamplesSquared = (double*)malloc(rmsSampleSize * sizeof(double));
+			if (apRmsSamplesSquared == nullptr) return;
+		}
 
 		aRmsSampleSize = rmsSampleSize;
 		aRmsSquaresSum = 0.0;
 		for (unsigned int i = 0; i < aRmsSampleSize; i++) apRmsSamplesSquared[i] = 0.0;
 		aRmsOneOverSampleSize = 1.0 / (double)aRmsSampleSize;
 		aSquareIndex = 0;
+	}
+	else
+	{
+		free(apRmsSamplesSquared);
+		apRmsSamplesSquared = nullptr;
+		aRmsSampleSize = 0;
+		aDetectorLevel = 0.0f;
+		aDetectorDecay = timeToAlpha(time);
+		aVoltageDrop = fabsf(voltageDrop);
 	}
 	
 	aDetector = detectorType;
@@ -322,12 +324,8 @@ void AudioEffectDynamics_F32::update(void)
 					attdb = aCompThreshold + ((inputdb - aCompThreshold) * aCompRatio) - inputdb;
 				}
 			}
-
-			//Attack
-			if (attdb < aCompdb) aCompdb += (attdb - aCompdb) * aCompAttack;
-
-			//Release
-			aCompdb += (attdb - aCompdb) * aCompRelease;
+			
+			aCompdb += (attdb - aCompdb) * (attdb < aCompdb ? aCompAttack : aCompRelease);
 
 			finaldb += aCompdb;
 		}
@@ -336,8 +334,7 @@ void AudioEffectDynamics_F32::update(void)
 		if (aLimitEnabled)
 		{
 			float outdb = inputdb + finaldb;
-			if (outdb > aLimitThreshold) aLimitdb += (aLimitThreshold - outdb - aLimitdb) * aLimitAttack;
-			aLimitdb -= aLimitdb * aLimitRelease;
+			aLimitdb += (aLimitThreshold - outdb - aLimitdb) * (outdb > aLimitThreshold ? aLimitAttack : aLimitRelease);
 
 			finaldb += aLimitdb;
 		}
