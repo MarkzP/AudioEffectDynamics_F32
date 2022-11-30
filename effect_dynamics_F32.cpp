@@ -182,12 +182,6 @@ void AudioEffectDynamics_F32::makeupGain(float gain)
 }
 
 
-float AudioEffectDynamics_F32::readDetector()
-{
-	return unit2db(aDetectorLevel);
-}
-
-
 void AudioEffectDynamics_F32::init()
 {
 	detector();
@@ -277,7 +271,7 @@ void AudioEffectDynamics_F32::update(void)
 				// Convert peak to approximate equivalent RMS level
 				samp *= 0.707f;
 				
-				aDetectorLevel += (samp - aDetectorLevel) * aDetectorDecay;
+				aDetectorLevel += (samp - aDetectorLevel) * (samp > aDetectorLevel ? 1.0f : aDetectorDecay);
 				break;
 				
 			case DetectorType_RMS:
@@ -341,6 +335,9 @@ void AudioEffectDynamics_F32::update(void)
 
 		//Compute linear gain
 		block->data[i] *= db2unit(finaldb);
+		
+		aDetectordb = inputdb;
+		aCurrentdb = finaldb;
 	}
 
 	//Transmit & release

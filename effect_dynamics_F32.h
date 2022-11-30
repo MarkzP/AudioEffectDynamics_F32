@@ -39,6 +39,8 @@
 
 class AudioEffectDynamics_F32 : public AudioStream_F32
 {
+//GUI: inputs:2, outputs:1  //this line used for automatic generation of GUI node
+//GUI: shortName:effect_Dynamics	
 public:
 	typedef enum
 	{
@@ -80,9 +82,9 @@ public:
 	//gain is in dbFS
 	void makeupGain(float gain = 0.0f);
 
-	float readDetector();
+	float readDetector() { return aDetectordb; }
 
-	float readCurrentGain() { return aMakeupdb + aGatedb + aCompdb + aLimitdb; }
+	float readCurrentGain() { return aCurrentdb; }
 
 protected:
 	void init();
@@ -96,6 +98,7 @@ private:
 	
 	float sample_rate_Hz;
 	DetectorTypes aDetector;
+	float aDetectordb;
 	float aDetectorLevel;
 	float aDetectorDecay;
 	float aVoltageDrop;
@@ -134,6 +137,7 @@ private:
 	bool mgAutoEnabled = false;
 	float mgHeadroom;
 	float aMakeupdb;
+	float aCurrentdb;
 
 	virtual void update(void);
 };
