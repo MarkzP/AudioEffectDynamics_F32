@@ -3,7 +3,7 @@
  * RMS detection by Nic Newdigate (https://github.com/newdigate)
  *
  * Development of this audio library was funded by PJRC.COM, LLC by sales of
- * Teensy and Audio Adaptor boards.  Please support PJRC's efforts to develop
+ * Teensy and Audio Adaptor boards.	 Please support PJRC's efforts to develop
  * open source software by purchasing Teensy or other PJRC products.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -48,29 +48,24 @@ AudioEffectDynamics_F32::AudioEffectDynamics_F32(const AudioSettings_F32 &settin
 
 void AudioEffectDynamics_F32::detector(DetectorTypes detectorType, float time, float voltageDrop)
 {
+#ifdef EFFECT_DYNAMICS_ENABLE_RMS	 
 	if (detectorType == DetectorType_RMS)
 	{
-		unsigned rmsSampleSize = (unsigned int)(sample_rate_Hz * fabsf(time)) + 1;
-		if (rmsSampleSize > aRmsSampleSize) {
-			free(apRmsSamplesSquared);
-			apRmsSamplesSquared = (double*)malloc(rmsSampleSize * sizeof(double));
-			if (apRmsSamplesSquared == nullptr) return;
-		}
+		unsigned rmsWindowSize = (unsigned int)(sample_rate_Hz * fabsf(time)) + 1;
+		if (rmsWindowSize > aRmsBufferSize) rmsWindowSize = aRmsBufferSize;
 
-		aRmsSampleSize = rmsSampleSize;
+		for (unsigned int i = 0; i < rmsWindowSize; i++) aRmsSamplesSquared[i] = 0.0;
+		
+    aRmsWindowSize = rmsWindowSize;
+    aRmsOneOverWindowSize = 1.0 / (double)aRmsWindowSize;
 		aRmsSquaresSum = 0.0;
-		for (unsigned int i = 0; i < aRmsSampleSize; i++) apRmsSamplesSquared[i] = 0.0;
-		aRmsOneOverSampleSize = 1.0 / (double)aRmsSampleSize;
 		aSquareIndex = 0;
 	}
 	else
+#endif	
 	{
-		free(apRmsSamplesSquared);
-		apRmsSamplesSquared = nullptr;
-		aRmsSampleSize = 0;
-		aDetectorLevel = 0.0f;
 		aDetectorDecay = timeToAlpha(time);
-		aVoltageDrop = fabsf(voltageDrop);
+		aVoltageDrop = constrain(fabsf(voltageDrop), 0.0f, 0.2f);
 	}
 	
 	aDetector = detectorType;
@@ -83,8 +78,8 @@ void AudioEffectDynamics_F32::gate(float threshold, float attack, float release,
 	attenuation = constrain(-fabsf(attenuation), EFFECT_DYNAMICS_MIN_DB, EFFECT_DYNAMICS_MAX_DB);
 	hysterisis = constrain(fabsf(hysterisis), 0.0f, 12.0f) / 2.0f;
 
-	if (threshold > EFFECT_DYNAMICS_MIN_DB && attenuation < EFFECT_DYNAMICS_MAX_DB) {
-
+	if (threshold > EFFECT_DYNAMICS_MIN_DB && attenuation < EFFECT_DYNAMICS_MAX_DB)
+	{
 		aGateThresholdOpen = threshold + hysterisis;
 		aGateThresholdClose = threshold - hysterisis;
 		aGateAttenuation = attenuation;
@@ -106,8 +101,8 @@ void AudioEffectDynamics_F32::compression(float threshold, float attack, float r
 {
 	threshold = constrain(-fabsf(threshold), EFFECT_DYNAMICS_MIN_DB, EFFECT_DYNAMICS_MAX_DB);
 
-	if (threshold < EFFECT_DYNAMICS_MAX_DB) {
-
+	if (threshold < EFFECT_DYNAMICS_MAX_DB)
+	{
 		aCompThreshold = threshold;
 		aCompRatio = 1.0f / constrain(abs(ratio), 1.0f, 60.0f);
 
@@ -147,8 +142,8 @@ void AudioEffectDynamics_F32::limit(float threshold, float attack, float release
 {
 	threshold = constrain(-fabsf(threshold), EFFECT_DYNAMICS_MIN_DB, EFFECT_DYNAMICS_MAX_DB);
 
-	if (threshold < EFFECT_DYNAMICS_MAX_DB) {
-
+	if (threshold < EFFECT_DYNAMICS_MAX_DB)
+	{
 		aLimitThreshold = threshold;
 		aLimitAttack = timeToAlpha(attack);
 		aLimitRelease = timeToAlpha(release);
@@ -178,7 +173,7 @@ void AudioEffectDynamics_F32::autoMakeupGain(float headroom)
 void AudioEffectDynamics_F32::makeupGain(float gain)
 {
 	mgAutoEnabled = false;
-	aMakeupdb = constrain(gain, -24.0f, 24.0f);
+	aMakeupdb = constrain(gain, -60.0f, 60.0f);
 }
 
 
@@ -193,36 +188,25 @@ void AudioEffectDynamics_F32::init()
 
 
 // ***********************************************************************************************/
-// from https://github.com/romeric/fastapprox
-inline float fasterlog2(float x)
-{
-	union { float f; uint32_t i; } vx = { x };
-	float y = vx.i;
-	y *= 1.1920928955078125e-7f;
-	return y - 126.94269504f;
-}
-
-
-inline float fasterexp2f (float p)
-{
-	float clipp = (p < EFFECT_DYNAMICS_MIN_DB) ? EFFECT_DYNAMICS_MIN_DB : p;
-	union { uint32_t i; float f; } v = { uint32_t( (1 << 23) * (clipp + 126.94269504f) ) };
-	return v.f;
-}
-// ***********************************************************************************************/
-
-
+// derived from https://github.com/romeric/fastapprox
 inline float AudioEffectDynamics_F32::unit2db(float u)
 {
-	if (u < 5.001554864521944e-7f) return EFFECT_DYNAMICS_MIN_DB;
-	return 6.02f * fasterlog2(u);
+	union { float f; uint32_t i; } v = { u };
+	float y = v.i;
+	y *= 1.1920928955078125e-7f;
+	y -= 126.94269504f;
+	y *= 6.0206f;
+	return y;
 }
 
 
 inline float AudioEffectDynamics_F32::db2unit(float db)
 {
-	return fasterexp2f(0.16612f * db);
+	float p = (db * 0.1660964f) + 126.94269504f;
+	union { uint32_t i; float f; } v = { uint32_t((1 << 23) * p) };
+	return v.f;
 }
+// ***********************************************************************************************/
 
 
 float AudioEffectDynamics_F32::timeToAlpha(float time)
@@ -246,6 +230,10 @@ void AudioEffectDynamics_F32::update(void)
 {
 	audio_block_f32_t *block;
 	audio_block_f32_t *sidechain;
+	audio_block_f32_t *detectorOut;
+	
+	float samp, inputdb, attdb, finaldb, knee, outdb;
+	double squareSamp;
 
 	block = AudioStream_F32::receiveWritable_f32(0);
 
@@ -253,43 +241,51 @@ void AudioEffectDynamics_F32::update(void)
 
 	sidechain = AudioStream_F32::receiveReadOnly_f32(1);
 	if (!sidechain) sidechain = block;
+	
+	detectorOut = AudioStream_F32::allocate_f32();
 
 	for (int i = 0; i < block->length; i++)
 	{
-		float samp = sidechain->data[i];
+		samp = sidechain->data[i];
 		
-		switch (aDetector)
+#ifdef EFFECT_DYNAMICS_ENABLE_RMS				
+		if (aDetector == DetectorType_RMS)
 		{
-			case DetectorType_DiodeBridge:
-				if (samp < 0.0f) samp = -samp;
-				// Fall through to DetectorType_HalfWave...				
-			case DetectorType_HalfWave:
-				// Account for diode voltage drop				
-				samp -= aVoltageDrop;
-				if (samp < 0.0f) samp = 0.0f;
-				
-				// Convert peak to approximate equivalent RMS level
-				samp *= 0.707f;
-				
-				aDetectorLevel += (samp - aDetectorLevel) * (samp > aDetectorLevel ? 1.0f : aDetectorDecay);
-				break;
-				
-			case DetectorType_RMS:
-				double squareSamp = (double)samp;
+				squareSamp = (double)samp;
 				squareSamp *= squareSamp;
+				
 				// Replace sample in window
-				aRmsSquaresSum -= apRmsSamplesSquared[aSquareIndex];
+				aRmsSquaresSum -= aRmsSamplesSquared[aSquareIndex];
 				aRmsSquaresSum += squareSamp;
-				apRmsSamplesSquared[aSquareIndex] = squareSamp;
-				if (++aSquareIndex >= aRmsSampleSize) aSquareIndex = 0;
+				aRmsSamplesSquared[aSquareIndex] = squareSamp;
+				if (++aSquareIndex >= aRmsWindowSize) aSquareIndex = 0;
 
 				// Compute square root of squares
-				aDetectorLevel = sqrtf(aRmsSquaresSum * aRmsOneOverSampleSize);
-				break;
+				aDetectorLevel = sqrtf((float)(aRmsSquaresSum * aRmsOneOverWindowSize));
+		}
+		else
+#endif		
+		{
+			// Track & remove dc offset
+			aDcOffset += (samp - aDcOffset) * aDcOffsetAlpha;
+			samp -= aDcOffset;
+		
+			// Rectify if detector is DiodeBridge
+			if (samp < 0.0f) samp = (aDetector == DetectorType_HalfWave ? 0.0f : -samp);
+		
+			// Account for diode voltage drop				
+			samp -= aVoltageDrop;
+			if (samp < 0.0f) samp = 0.0f;
+			
+			// Convert peak to approximate equivalent RMS level
+			samp *= 0.707f;
+			
+			aDetectorLevel += (samp - aDetectorLevel) * (samp > aDetectorLevel ? 1.0f : aDetectorDecay);
 		}
 		
-		float inputdb = unit2db(aDetectorLevel);
-		float finaldb = aMakeupdb;
+		if (detectorOut) detectorOut->data[i] = aDetectorLevel;
+		inputdb = unit2db(aDetectorLevel);
+		finaldb = aMakeupdb;
 
 		//Gate
 		if (aGateEnabled)
@@ -303,13 +299,13 @@ void AudioEffectDynamics_F32::update(void)
 		//Compressor
 		if (aCompEnabled)
 		{		
-			float attdb = 0.0f; //Below knee
+			attdb = 0.0f; //Below knee
 			if (inputdb >= aCompLowKnee)
 			{
 				if (inputdb < aCompHighKnee)
 				{
 					//Knee transition
-					float knee = inputdb - aCompLowKnee;
+					knee = inputdb - aCompLowKnee;
 					attdb = aCompKneeRatio * knee * knee * aCompTwoKneeWidth;
 				}
 				else
@@ -327,8 +323,9 @@ void AudioEffectDynamics_F32::update(void)
 		//Brickwall Limiter
 		if (aLimitEnabled)
 		{
-			float outdb = inputdb + finaldb;
-			aLimitdb += (aLimitThreshold - outdb - aLimitdb) * (outdb > aLimitThreshold ? aLimitAttack : aLimitRelease);
+			outdb = inputdb + finaldb;
+			attdb = (outdb > aLimitThreshold ? aLimitThreshold - outdb : 0.0f);
+			aLimitdb += (attdb - aLimitdb) * (attdb < aLimitdb ? aLimitAttack : aLimitRelease);
 
 			finaldb += aLimitdb;
 		}
@@ -341,9 +338,16 @@ void AudioEffectDynamics_F32::update(void)
 	}
 
 	//Transmit & release
-	AudioStream_F32::transmit(block);
-	if (sidechain != block) AudioStream_F32::release(sidechain);
+	AudioStream_F32::transmit(block, 0);
 	AudioStream_F32::release(block);
+
+	if (detectorOut)
+	{
+		AudioStream_F32::transmit(detectorOut, 1);
+		AudioStream_F32::release(detectorOut);
+	}
+
+	if (sidechain != block) AudioStream_F32::release(sidechain);
 }
 
 #endif

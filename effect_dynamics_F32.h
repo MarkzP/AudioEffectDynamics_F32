@@ -3,7 +3,7 @@
  * RMS detection by Nic Newdigate (https://github.com/newdigate)
  *
  * Development of this audio library was funded by PJRC.COM, LLC by sales of
- * Teensy and Audio Adaptor boards.  Please support PJRC's efforts to develop
+ * Teensy and Audio Adaptor boards.	 Please support PJRC's efforts to develop
  * open source software by purchasing Teensy or other PJRC products.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -33,20 +33,24 @@
 #include "OpenAudio_ArduinoLibrary.h"
 #include "AudioStream_F32.h"
 
-#define EFFECT_DYNAMICS_MIN_DB  -126.0f  //21 bits effictive, limited by approximations
-#define EFFECT_DYNAMICS_MAX_DB  0.0f
+#define EFFECT_DYNAMICS_MIN_DB	-126.0f	 //21 bits effictive, limited by approximations
+#define EFFECT_DYNAMICS_MAX_DB	0.0f
+
+#define EFFECT_DYNAMICS_ENABLE_RMS
 
 
 class AudioEffectDynamics_F32 : public AudioStream_F32
 {
-//GUI: inputs:2, outputs:1  //this line used for automatic generation of GUI node
+//GUI: inputs:2, outputs:2	//this line used for automatic generation of GUI node
 //GUI: shortName:effect_Dynamics	
 public:
 	typedef enum
 	{
 		DetectorType_DiodeBridge,		// Full wave peak rectification with optional filtering & diode vf drop
 		DetectorType_HalfWave,			// Single diode peak rectification with optional filtering & diode vf drop
+#ifdef EFFECT_DYNAMICS_ENABLE_RMS		 
 		DetectorType_RMS,				// RMS over time window
+#endif
 	} DetectorTypes;
 
 	AudioEffectDynamics_F32();
@@ -67,7 +71,7 @@ public:
 	//attack and release are in seconds
 	//ratio is expressed as x:1 i.e. 1 for no compression, 60 for brickwall limiting
 	//Set kneeWidth to 0 for hard knee
-	void compression(float threshold = EFFECT_DYNAMICS_MAX_DB, float attack = 0.1f, float release = 2.5f, float ratio = 10.0f, float kneeWidth = 6.0f);
+	void compression(float threshold = EFFECT_DYNAMICS_MAX_DB, float attack = 0.1f, float release = 2.5f, float ratio = 2.0f, float kneeWidth = 6.0f);
 
 	//Sets the hard limiter parameters
 	//threshold is in dbFS
@@ -85,6 +89,8 @@ public:
 	float readDetector() { return aDetectordb; }
 
 	float readCurrentGain() { return aCurrentdb; }
+	
+	float readMakeupGain() { return aMakeupdb; }
 
 protected:
 	void init();
@@ -101,12 +107,17 @@ private:
 	float aDetectordb;
 	float aDetectorLevel;
 	float aDetectorDecay;
+	float aDcOffset = 0.0f;
+	static constexpr float aDcOffsetAlpha = 0.0001f;
 	float aVoltageDrop;
-	unsigned int aRmsSampleSize = 0;
-	unsigned int aSquareIndex = 0;
-	double* apRmsSamplesSquared = nullptr;
+#ifdef EFFECT_DYNAMICS_ENABLE_RMS	 
+	static constexpr unsigned int aRmsBufferSize = 128;
+	double aRmsSamplesSquared[aRmsBufferSize];
 	double aRmsSquaresSum = 0.0;
-	double aRmsOneOverSampleSize = 1.0;
+	double aRmsOneOverWindowSize = 0.0;
+  unsigned int aRmsWindowSize = 0;
+	unsigned int aSquareIndex = 0;
+#endif	
 
 	bool aGateEnabled = false;
 	float aGateThresholdOpen;
