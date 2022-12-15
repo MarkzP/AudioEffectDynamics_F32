@@ -74,19 +74,15 @@ void AudioEffectDynamics_F32::detector(DetectorTypes detectorType, float time, f
 
 void AudioEffectDynamics_F32::gate(float threshold, float attack, float release, float hysterisis, float attenuation)
 {
-	threshold = constrain(-fabsf(threshold), EFFECT_DYNAMICS_MIN_DB, EFFECT_DYNAMICS_MAX_DB);
-	attenuation = constrain(-fabsf(attenuation), EFFECT_DYNAMICS_MIN_DB, EFFECT_DYNAMICS_MAX_DB);
-	hysterisis = constrain(fabsf(hysterisis), 0.0f, 12.0f) / 2.0f;
-
-	if (threshold > EFFECT_DYNAMICS_MIN_DB && attenuation < EFFECT_DYNAMICS_MAX_DB)
+	if (threshold > EFFECT_DYNAMICS_MIN_DB && attenuation < EFFECT_DYNAMICS_MAX_DB && hysterisis >= 0.0f)
 	{
-		aGateThresholdOpen = threshold + hysterisis;
-		aGateThresholdClose = threshold - hysterisis;
-		aGateAttenuation = attenuation;
+		aGateThresholdOpen = db2ln(threshold + (hysterisis * 0.5f));
+		aGateThresholdClose = db2ln(threshold - (hysterisis * 0.5f));
+		aGateAttenuation = db2ln(attenuation);
 		aGateAttack = timeToAlpha(attack);
 		aGateRelease = timeToAlpha(release);
 
-		if (!aGateEnabled) aGatedb = 0.0f;
+		if (!aGateEnabled) aGateln = 0.0f;
 
 		aGateEnabled = true;
 	}
@@ -99,19 +95,17 @@ void AudioEffectDynamics_F32::gate(float threshold, float attack, float release,
 
 void AudioEffectDynamics_F32::compression(float threshold, float attack, float release, float ratio, float kneeWidth)
 {
-	threshold = constrain(-fabsf(threshold), EFFECT_DYNAMICS_MIN_DB, EFFECT_DYNAMICS_MAX_DB);
-
-	if (threshold < EFFECT_DYNAMICS_MAX_DB)
+	if (threshold < EFFECT_DYNAMICS_MAX_DB && ratio >= 1.0f)
 	{
-		aCompThreshold = threshold;
-		aCompRatio = 1.0f / constrain(abs(ratio), 1.0f, 60.0f);
+		aCompThreshold = db2ln(threshold);
+		aCompRatio = 1.0f / ratio;
 
-		float compKneeWidth = constrain(abs(kneeWidth), 0.0f, 32.0f);
+		float compKneeWidth = db2ln(kneeWidth, 0.0f, 32.0f);
 		aCompAttack = timeToAlpha(attack);
 		aCompRelease = timeToAlpha(release);
 		if (compKneeWidth > 0.0f)
 		{
-			aCompHalfKneeWidth = compKneeWidth / 2.0f;
+			aCompHalfKneeWidth = compKneeWidth * 0.5f;
 			aCompTwoKneeWidth = 1.0f / (compKneeWidth * 2.0f);
 			aCompKneeRatio = aCompRatio - 1.0f;
 			aCompLowKnee = aCompThreshold - aCompHalfKneeWidth;
@@ -123,14 +117,12 @@ void AudioEffectDynamics_F32::compression(float threshold, float attack, float r
 			aCompHighKnee = aCompThreshold;
 		}
 
-		if (!aCompEnabled) aCompdb = 0.0f;
+		if (!aCompEnabled) aCompln = 0.0f;
 
 		aCompEnabled = true;
 	}
 	else
 	{
-		aCompThreshold = EFFECT_DYNAMICS_MAX_DB;
-		aCompRatio = 1.0f;
 		aCompEnabled = false;
 	}
 
@@ -140,22 +132,19 @@ void AudioEffectDynamics_F32::compression(float threshold, float attack, float r
 
 void AudioEffectDynamics_F32::limit(float threshold, float attack, float release)
 {
-	threshold = constrain(-fabsf(threshold), EFFECT_DYNAMICS_MIN_DB, EFFECT_DYNAMICS_MAX_DB);
-
 	if (threshold < EFFECT_DYNAMICS_MAX_DB)
 	{
-		aLimitThreshold = threshold;
+		aLimitThreshold = db2ln(threshold);
 		aLimitAttack = timeToAlpha(attack);
 		aLimitRelease = timeToAlpha(release);
 
-		if (!aLimitEnabled) aLimitdb = 0.0f;
+		if (!aLimitEnabled) aLimitln = 0.0f;
 
 		aLimitEnabled = true;
 	}
 	else
 	{
 		aLimitEnabled = false;
-		aLimitThreshold = EFFECT_DYNAMICS_MAX_DB;
 	}
 
 	computeMakeupGain();
@@ -165,7 +154,7 @@ void AudioEffectDynamics_F32::limit(float threshold, float attack, float release
 void AudioEffectDynamics_F32::autoMakeupGain(float headroom)
 {
 	mgAutoEnabled = true;
-	mgHeadroom = constrain(-fabsf(headroom), EFFECT_DYNAMICS_MIN_DB, EFFECT_DYNAMICS_MAX_DB);
+	mgHeadroom = -db2ln(fabsf(headroom), -60.0f, 60.0f);
 	computeMakeupGain();
 }
 
@@ -173,7 +162,7 @@ void AudioEffectDynamics_F32::autoMakeupGain(float headroom)
 void AudioEffectDynamics_F32::makeupGain(float gain)
 {
 	mgAutoEnabled = false;
-	aMakeupdb = constrain(gain, -60.0f, 60.0f);
+	aMakeupln = db2ln(gain, -60.0f, 60.0f);
 }
 
 
@@ -189,22 +178,28 @@ void AudioEffectDynamics_F32::init()
 
 // ***********************************************************************************************/
 // derived from https://github.com/romeric/fastapprox
-inline float AudioEffectDynamics_F32::unit2db(float u)
+inline float AudioEffectDynamics_F32::unit2ln(float u)
 {
 	union { float f; uint32_t i; } v = { u };
 	float y = v.i;
 	y *= 1.1920928955078125e-7f;
 	y -= 126.94269504f;
-	y *= 6.0206f;
 	return y;
 }
 
 
-inline float AudioEffectDynamics_F32::db2unit(float db)
+inline float AudioEffectDynamics_F32::ln2unit(float ln)
 {
-	float p = (db * 0.1660964f) + 126.94269504f;
+	float p = ln + 126.94269504f;
 	union { uint32_t i; float f; } v = { uint32_t((1 << 23) * p) };
 	return v.f;
+}
+
+float AudioEffectDynamics_F32::db2ln(float db, float min, float max)
+{
+  if (db < min) db = min;
+  else if (db > max) db = max;
+  return db * 0.1660964f;
 }
 // ***********************************************************************************************/
 
@@ -221,7 +216,7 @@ void AudioEffectDynamics_F32::computeMakeupGain()
 {
 	if (mgAutoEnabled)
 	{
-		aMakeupdb = -aCompThreshold + (aCompThreshold * aCompRatio) + mgHeadroom;
+		aMakeupln = -aCompThreshold + (aCompThreshold * aCompRatio) + mgHeadroom;
 	}
 }
 
@@ -232,7 +227,7 @@ void AudioEffectDynamics_F32::update(void)
 	audio_block_f32_t *sidechain;
 	audio_block_f32_t *detectorOut;
 	
-	float samp, inputdb, attdb, finaldb, knee, outdb;
+	float samp, inputln, attln, finalln, knee, outln;
 	double squareSamp;
 
 	block = AudioStream_F32::receiveWritable_f32(0);
@@ -284,57 +279,54 @@ void AudioEffectDynamics_F32::update(void)
 		}
 		
 		if (detectorOut) detectorOut->data[i] = aDetectorLevel;
-		inputdb = unit2db(aDetectorLevel);
-		finaldb = aMakeupdb;
+    inputln = unit2ln(aDetectorLevel);
+		finalln = aMakeupln;
 
 		//Gate
 		if (aGateEnabled)
 		{
-			if (inputdb > aGateThresholdOpen) aGatedb -= aGatedb * aGateAttack;
-			if (inputdb < aGateThresholdClose) aGatedb += (aGateAttenuation - aGatedb) * aGateRelease;
+			if (inputln > aGateThresholdOpen) aGateln -= aGateln * aGateAttack;
+			if (inputln < aGateThresholdClose) aGateln += (aGateAttenuation - aGateln) * aGateRelease;
 
-			finaldb += aGatedb;
+			finalln += aGateln;
 		}
 
 		//Compressor
 		if (aCompEnabled)
 		{		
-			attdb = 0.0f; //Below knee
-			if (inputdb >= aCompLowKnee)
+			attln = 0.0f; //Below knee
+			if (inputln >= aCompLowKnee)
 			{
-				if (inputdb < aCompHighKnee)
+				if (inputln < aCompHighKnee)
 				{
 					//Knee transition
-					knee = inputdb - aCompLowKnee;
-					attdb = aCompKneeRatio * knee * knee * aCompTwoKneeWidth;
+					knee = inputln - aCompLowKnee;
+					attln = aCompKneeRatio * knee * knee * aCompTwoKneeWidth;
 				}
 				else
 				{
 					//Above knee
-					attdb = aCompThreshold + ((inputdb - aCompThreshold) * aCompRatio) - inputdb;
+					attln = aCompThreshold + ((inputln - aCompThreshold) * aCompRatio) - inputln;
 				}
 			}
 			
-			aCompdb += (attdb - aCompdb) * (attdb < aCompdb ? aCompAttack : aCompRelease);
+			aCompln += (attln - aCompln) * (attln < aCompln ? aCompAttack : aCompRelease);
 
-			finaldb += aCompdb;
+			finalln += aCompln;
 		}
 
 		//Brickwall Limiter
 		if (aLimitEnabled)
 		{
-			outdb = inputdb + finaldb;
-			attdb = (outdb > aLimitThreshold ? aLimitThreshold - outdb : 0.0f);
-			aLimitdb += (attdb - aLimitdb) * (attdb < aLimitdb ? aLimitAttack : aLimitRelease);
+			outln = inputln + finalln;
+			attln = (outln > aLimitThreshold ? aLimitThreshold - outln : 0.0f);
+			aLimitln += (attln - aLimitln) * (attln < aLimitln ? aLimitAttack : aLimitRelease);
 
-			finaldb += aLimitdb;
+			finalln += aLimitln;
 		}
 
 		//Compute linear gain
-		block->data[i] *= db2unit(finaldb);
-		
-		aDetectordb = inputdb;
-		aCurrentdb = finaldb;
+		block->data[i] *= ln2unit(finalln);
 	}
 
 	//Transmit & release

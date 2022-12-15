@@ -33,8 +33,8 @@
 #include "OpenAudio_ArduinoLibrary.h"
 #include "AudioStream_F32.h"
 
-#define EFFECT_DYNAMICS_MIN_DB	-126.0f	 //21 bits effictive, limited by approximations
-#define EFFECT_DYNAMICS_MAX_DB	0.0f
+#define EFFECT_DYNAMICS_MIN_DB	(-126.0f)	 //21 bits effictive, limited by approximations
+#define EFFECT_DYNAMICS_MAX_DB	(0.0f)
 
 #define EFFECT_DYNAMICS_ENABLE_RMS
 
@@ -86,16 +86,11 @@ public:
 	//gain is in dbFS
 	void makeupGain(float gain = 0.0f);
 
-	float readDetector() { return aDetectordb; }
-
-	float readCurrentGain() { return aCurrentdb; }
-	
-	float readMakeupGain() { return aMakeupdb; }
-
 protected:
 	void init();
-	float unit2db(float u);
-	float db2unit(float db);
+	float unit2ln(float u);
+	float ln2unit(float ln);
+  float db2ln(float db, float min = EFFECT_DYNAMICS_MIN_DB, float max = EFFECT_DYNAMICS_MAX_DB);
 	float timeToAlpha(float time);
 	void computeMakeupGain();
 
@@ -104,7 +99,6 @@ private:
 	
 	float sample_rate_Hz;
 	DetectorTypes aDetector;
-	float aDetectordb;
 	float aDetectorLevel;
 	float aDetectorDecay;
 	float aDcOffset = 0.0f;
@@ -125,7 +119,7 @@ private:
 	float aGateAttack;
 	float aGateRelease;
 	float aGateAttenuation;
-	float aGatedb = 0.0f;
+	float aGateln = 0.0f;
 
 	bool aCompEnabled = false;
 	float aCompThreshold;
@@ -137,18 +131,17 @@ private:
 	float aCompKneeRatio;
 	float aCompLowKnee;
 	float aCompHighKnee;
-	float aCompdb = 0.0f;
+	float aCompln = 0.0f;
 
 	bool aLimitEnabled = false;
 	float aLimitThreshold;
 	float aLimitAttack;
 	float aLimitRelease;
-	float aLimitdb = 0.0f;
+	float aLimitln = 0.0f;
 
 	bool mgAutoEnabled = false;
 	float mgHeadroom;
-	float aMakeupdb;
-	float aCurrentdb;
+	float aMakeupln;
 
 	virtual void update(void);
 };
