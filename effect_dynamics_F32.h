@@ -1,6 +1,5 @@
 /* Dynamics Processor (Gate, Compressor & Limiter)
- * Copyright (c) 2022, Marc Paquette (https://github.com/MarkzP)
- * RMS detection by Nic Newdigate (https://github.com/newdigate)
+ * Copyright (c) 2023, Marc Paquette (https://github.com/MarkzP)
  *
  * Development of this audio library was funded by PJRC.COM, LLC by sales of
  * Teensy and Audio Adaptor boards.	 Please support PJRC's efforts to develop
@@ -36,9 +35,6 @@
 #define EFFECT_DYNAMICS_MIN_DB	(-126.0f)	 //21 bits effictive, limited by approximations
 #define EFFECT_DYNAMICS_MAX_DB	(0.0f)
 
-#define EFFECT_DYNAMICS_ENABLE_RMS
-
-
 class AudioEffectDynamics_F32 : public AudioStream_F32
 {
 //GUI: inputs:2, outputs:2	//this line used for automatic generation of GUI node
@@ -48,9 +44,7 @@ public:
 	{
 		DetectorType_DiodeBridge,		// Full wave peak rectification with optional filtering & diode vf drop
 		DetectorType_HalfWave,			// Single diode peak rectification with optional filtering & diode vf drop
-#ifdef EFFECT_DYNAMICS_ENABLE_RMS		 
-		DetectorType_RMS,				// RMS over time window
-#endif
+		DetectorType_RMS
 	} DetectorTypes;
 
 	AudioEffectDynamics_F32();
@@ -59,28 +53,31 @@ public:
 	// Sets the detector characteristics to mimic real life applications
 	// time is in seconds
 	// voltage drop is in unit level
-	void detector(DetectorTypes detectorType = DetectorType_DiodeBridge, float time = 0.0f, float voltageDrop = 0.0f);
+	void detector(DetectorTypes detectorType = DetectorType_DiodeBridge, float time = 0.02f, float voltageDrop = 0.0f);
 
 	//Sets the gate parameters.
 	//threshold is in dbFS
 	//attack & release are in seconds
-	void gate(float threshold = EFFECT_DYNAMICS_MIN_DB, float attack = 0.001f, float release = 1.0f, float hysterisis = 6.0f, float attenuation = -12.0f);
+	void gate(float threshold = EFFECT_DYNAMICS_MIN_DB, float attack = 0.001f, float release = 1.0f, float hysterisis = 6.0f, float attenuation = -12.0f, bool enable = true);
+	void gate(bool enable) { aGateEnabled = enable; }
 
 	//Sets the compression parameters.
 	//threshold & kneeWidth are in db(FS)
 	//attack and release are in seconds
 	//ratio is expressed as x:1 i.e. 1 for no compression, 60 for brickwall limiting
 	//Set kneeWidth to 0 for hard knee
-	void compression(float threshold = EFFECT_DYNAMICS_MAX_DB, float attack = 0.1f, float release = 2.5f, float ratio = 2.0f, float kneeWidth = 6.0f);
+	void compression(float threshold = -45.0f, float attack = 0.01f, float release = 2.5f, float ratio = 2.0f, float kneeWidth = 6.0f, bool enable = true);
+	void compression(bool enable) { aCompEnabled = enable; computeMakeupGain(); }
 
 	//Sets the hard limiter parameters
 	//threshold is in dbFS
 	//attack & release are in seconds
-	void limit(float threshold = EFFECT_DYNAMICS_MAX_DB, float attack = 0.01f, float release = 1.5f);
+	void limit(float threshold = EFFECT_DYNAMICS_MAX_DB, float attack = 0.001f, float release = 0.1f, bool enable = true);
+	void limit(bool enable) { aLimitEnabled = enable; }
 
 	//Enables automatic makeup gain setting
 	//headroom is in dbFS
-	void autoMakeupGain(float headroom = 6.0f);
+	void autoMakeupGain(float headroom = 3.0f, bool enable = true);
 
 	//Sets a fixed makeup gain value.
 	//gain is in dbFS
@@ -90,7 +87,7 @@ protected:
 	void init();
 	float unit2ln(float u);
 	float ln2unit(float ln);
-  float db2ln(float db, float min = EFFECT_DYNAMICS_MIN_DB, float max = EFFECT_DYNAMICS_MAX_DB);
+	float db2ln(float db, float min = EFFECT_DYNAMICS_MIN_DB, float max = EFFECT_DYNAMICS_MAX_DB);
 	float timeToAlpha(float time);
 	void computeMakeupGain();
 
@@ -99,19 +96,12 @@ private:
 	
 	float sample_rate_Hz;
 	DetectorTypes aDetector;
+	double aRMSLevel;
 	float aDetectorLevel;
 	float aDetectorDecay;
 	float aDcOffset = 0.0f;
 	static constexpr float aDcOffsetAlpha = 0.0001f;
 	float aVoltageDrop;
-#ifdef EFFECT_DYNAMICS_ENABLE_RMS	 
-	static constexpr unsigned int aRmsBufferSize = 128;
-	double aRmsSamplesSquared[aRmsBufferSize];
-	double aRmsSquaresSum = 0.0;
-	double aRmsOneOverWindowSize = 0.0;
-  unsigned int aRmsWindowSize = 0;
-	unsigned int aSquareIndex = 0;
-#endif	
 
 	bool aGateEnabled = false;
 	float aGateThresholdOpen;
@@ -141,6 +131,7 @@ private:
 
 	bool mgAutoEnabled = false;
 	float mgHeadroom;
+	float mgManual;
 	float aMakeupln;
 
 	virtual void update(void);
