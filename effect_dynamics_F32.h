@@ -59,21 +59,18 @@ public:
 	//threshold is in dbFS
 	//attack & release are in seconds
 	void gate(float threshold = EFFECT_DYNAMICS_MIN_DB, float attack = 0.001f, float release = 1.0f, float hysterisis = 6.0f, float attenuation = -12.0f, bool enable = true);
-	void gate(bool enable) { aGateEnabled = enable; }
 
 	//Sets the compression parameters.
 	//threshold & kneeWidth are in db(FS)
 	//attack and release are in seconds
 	//ratio is expressed as x:1 i.e. 1 for no compression, 60 for brickwall limiting
 	//Set kneeWidth to 0 for hard knee
-	void compression(float threshold = -45.0f, float attack = 0.01f, float release = 2.5f, float ratio = 2.0f, float kneeWidth = 6.0f, bool enable = true);
-	void compression(bool enable) { aCompEnabled = enable; computeMakeupGain(); }
+	void compression(float threshold = -45.0f, float attack = 0.01f, float release = 2.5f, float ratio = 2.0f, float kneeWidth = 6.0f, float maxAttenuation = 120.0f, bool enable = true);
 
 	//Sets the hard limiter parameters
 	//threshold is in dbFS
 	//attack & release are in seconds
 	void limit(float threshold = EFFECT_DYNAMICS_MAX_DB, float attack = 0.001f, float release = 0.1f, bool enable = true);
-	void limit(bool enable) { aLimitEnabled = enable; }
 
 	//Enables automatic makeup gain setting
 	//headroom is in dbFS
@@ -82,6 +79,8 @@ public:
 	//Sets a fixed makeup gain value.
 	//gain is in dbFS
 	void makeupGain(float gain = 0.0f);
+  
+  float effectiveGain() { return aFinalln * (1.0f / 0.1660964f); }
 
 protected:
 	void init();
@@ -121,6 +120,7 @@ private:
 	float aCompKneeRatio;
 	float aCompLowKnee;
 	float aCompHighKnee;
+  float aMaxAttenuation;
 	float aCompln = 0.0f;
 
 	bool aLimitEnabled = false;
@@ -133,6 +133,8 @@ private:
 	float mgHeadroom;
 	float mgManual;
 	float aMakeupln;
+  
+  float aFinalln;
 
 	virtual void update(void);
 };
