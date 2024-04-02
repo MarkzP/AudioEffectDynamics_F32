@@ -35,6 +35,8 @@
 #define EFFECT_DYNAMICS_MIN_DB	(-126.0f)	 //21 bits effictive, limited by approximations
 #define EFFECT_DYNAMICS_MAX_DB	(0.0f)
 
+#define EFFECT_DYNAMICS_DB_LN	(0.1660964f)
+
 class AudioEffectDynamics_F32 : public AudioStream_F32
 {
 //GUI: inputs:2, outputs:2	//this line used for automatic generation of GUI node
@@ -65,7 +67,7 @@ public:
 	//attack and release are in seconds
 	//ratio is expressed as x:1 i.e. 1 for no compression, 60 for brickwall limiting
 	//Set kneeWidth to 0 for hard knee
-	void compression(float threshold = -45.0f, float attack = 0.01f, float release = 2.5f, float ratio = 2.0f, float kneeWidth = 6.0f, float maxAttenuation = 120.0f, bool enable = true);
+	void compression(float threshold = -45.0f, float attack = 0.01f, float release = 2.5f, float ratio = 2.0f, float kneeWidth = 6.0f, bool enable = true);
 
 	//Sets the hard limiter parameters
 	//threshold is in dbFS
@@ -80,7 +82,7 @@ public:
 	//gain is in dbFS
 	void makeupGain(float gain = 0.0f);
   
-  float effectiveGain() { return aFinalln * (1.0f / 0.1660964f); }
+  float effectiveGain() { return aFinalln * (1.0f / EFFECT_DYNAMICS_DB_LN); }
 
 protected:
 	void init();
@@ -92,6 +94,8 @@ protected:
 
 private:
 	audio_block_f32_t* inputQueueArray[2];
+	
+	static constexpr float aMinln = EFFECT_DYNAMICS_MIN_DB * EFFECT_DYNAMICS_DB_LN;
 	
 	float sample_rate_Hz;
 	DetectorTypes aDetector;
@@ -120,7 +124,6 @@ private:
 	float aCompKneeRatio;
 	float aCompLowKnee;
 	float aCompHighKnee;
-  float aMaxAttenuation;
 	float aCompln = 0.0f;
 
 	bool aLimitEnabled = false;
@@ -133,8 +136,8 @@ private:
 	float mgHeadroom;
 	float mgManual;
 	float aMakeupln;
-  
-  float aFinalln;
+
+	float aFinalln;
 
 	virtual void update(void);
 };

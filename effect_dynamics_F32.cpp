@@ -72,12 +72,12 @@ void AudioEffectDynamics_F32::gate(float threshold, float attack, float release,
 }
 
 
-void AudioEffectDynamics_F32::compression(float threshold, float attack, float release, float ratio, float kneeWidth, float maxAttenuation, bool enable)
+void AudioEffectDynamics_F32::compression(float threshold, float attack, float release, float ratio, float kneeWidth, bool enable)
 {
 	if (enable)
 	{
 		aCompThreshold = db2ln(threshold);
-		if (ratio < 1.0f) ratio = 1.0f;
+		if (ratio < 0.5f) ratio = 0.5f;
 		aCompRatio = 1.0f / ratio;
 
 		float compKneeWidth = db2ln(fabsf(kneeWidth), 0.0f, 126.0f);
@@ -96,9 +96,7 @@ void AudioEffectDynamics_F32::compression(float threshold, float attack, float r
 			aCompLowKnee = aCompThreshold;
 			aCompHighKnee = aCompThreshold;
 		}
-    
-    aMaxAttenuation = -fabsf(maxAttenuation);
-
+	
 		if (!aCompEnabled) aCompln = 0.0f;
 	}
 	
@@ -174,7 +172,7 @@ float AudioEffectDynamics_F32::db2ln(float db, float min, float max)
 {
 	if (db < min) db = min;
 	else if (db > max) db = max;
-	return db * 0.1660964f;
+	return db * EFFECT_DYNAMICS_DB_LN;
 }
 
 // ***********************************************************************************************/
@@ -271,8 +269,6 @@ void AudioEffectDynamics_F32::update(void)
 					attln = aCompThreshold + ((inputln - aCompThreshold) * aCompRatio) - inputln;
 				}
 			}
-      
-      if (attln < aMaxAttenuation) attln = aMaxAttenuation;
 			
 			aCompln += (attln - aCompln) * (attln < aCompln ? aCompAttack : aCompRelease);
 
@@ -291,8 +287,8 @@ void AudioEffectDynamics_F32::update(void)
 
 		//Compute linear gain
 		block->data[i] *= ln2unit(finalln);
-    
-    aFinalln = finalln;
+
+		aFinalln = finalln;
 	}
 
 	//Transmit & release
