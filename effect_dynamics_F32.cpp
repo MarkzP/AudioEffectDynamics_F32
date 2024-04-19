@@ -72,7 +72,7 @@ void AudioEffectDynamics_F32::gate(float threshold, float attack, float release,
 }
 
 
-void AudioEffectDynamics_F32::compression(float threshold, float attack, float release, float ratio, float kneeWidth, bool enable)
+void AudioEffectDynamics_F32::compression(float threshold, float attack, float release, float ratio, float kneeWidth, float wet, bool enable)
 {
 	if (enable)
 	{
@@ -96,6 +96,10 @@ void AudioEffectDynamics_F32::compression(float threshold, float attack, float r
 			aCompLowKnee = aCompThreshold;
 			aCompHighKnee = aCompThreshold;
 		}
+		
+		if (wet < 0.0f) wet = 0.0f;
+		else if (wet > 1.0f) wet = 1.0f;
+		aCompWet = wet;
 	
 		if (!aCompEnabled) aCompln = 0.0f;
 	}
@@ -138,9 +142,9 @@ void AudioEffectDynamics_F32::makeupGain(float gain)
 void AudioEffectDynamics_F32::init()
 {
 	detector();
-	gate(false);
+	gate();
 	compression();
-	limit(false);
+	limit();
 	autoMakeupGain();
 	makeupGain();
 }
@@ -160,8 +164,8 @@ inline float AudioEffectDynamics_F32::unit2ln(float u)
 
 inline float AudioEffectDynamics_F32::ln2unit(float ln)
 {
-	float offset = (ln < 0) ? 1.0f : 0.0f;
-	float clipp = (ln < -126) ? -126.0f : ln;
+	float offset = (ln < 0.0f) ? 1.0f : 0.0f;
+	float clipp = (ln < -126.0f) ? -126.0f : ln;
 	int w = clipp;
 	float z = clipp - w + offset;
 	union { uint32_t i; float f; } v = { uint32_t ( (1 << 23) * (clipp + 121.2740575f + 27.7280233f / (4.84252568f - z) - 1.49012907f * z) ) };
@@ -188,7 +192,7 @@ float AudioEffectDynamics_F32::timeToAlpha(float time)
 
 void AudioEffectDynamics_F32::computeMakeupGain()
 {
-	aMakeupln = mgManual + (mgAutoEnabled && aCompEnabled ? 0.5f * (-aCompThreshold + (aCompThreshold * aCompRatio) + mgHeadroom) : 0.0f);
+	aMakeupln = mgManual + (mgAutoEnabled && aCompEnabled ? 0.5f * aCompWet * (-aCompThreshold + (aCompThreshold * aCompRatio) + mgHeadroom) : 0.0f);
 }
 
 
@@ -272,7 +276,7 @@ void AudioEffectDynamics_F32::update(void)
 			
 			aCompln += (attln - aCompln) * (attln < aCompln ? aCompAttack : aCompRelease);
 
-			finalln += aCompln;
+			finalln += (aCompln * aCompWet);
 		}
 
 		//Brickwall Limiter
